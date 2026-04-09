@@ -25,13 +25,16 @@ async def activate_subscription(user_id: int, payment_db_id: int, days: int) -> 
 
 
 async def revoke_subscription(user_id: int) -> None:
-    """Ban (kick) user from the channel and deactivate subscription records."""
+    """Ban user from the channel and deactivate subscription records.
+
+    We keep the ban in place so the user cannot rejoin via invite link.
+    activate_subscription() calls unban when the user pays again.
+    """
     try:
         await bot.ban_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        await bot.unban_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        logger.info("User %s removed from channel %s", user_id, CHANNEL_ID)
+        logger.info("User %s banned from channel %s", user_id, CHANNEL_ID)
     except (TelegramBadRequest, TelegramForbiddenError) as e:
-        logger.warning("Could not kick user %s: %s", user_id, e)
+        logger.warning("Could not ban user %s: %s", user_id, e)
 
     await db.deactivate_subscriptions(user_id)
 

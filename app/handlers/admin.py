@@ -179,8 +179,7 @@ async def cb_kick(callback: CallbackQuery) -> None:
     user_id = int(callback.data.rsplit(":", 1)[-1])
     try:
         await bot.ban_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        await bot.unban_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        await callback.answer("✅ Пользователь удалён из канала", show_alert=True)
+        await callback.answer("✅ Пользователь забанен и удалён из канала", show_alert=True)
     except (TelegramBadRequest, TelegramForbiddenError) as e:
         await callback.answer(f"Ошибка: {e.message}", show_alert=True)
         return
