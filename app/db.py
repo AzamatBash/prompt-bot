@@ -354,3 +354,26 @@ async def upsert_text(key: str, value: str) -> None:
 
 async def delete_text(key: str) -> None:
     await _p().execute("DELETE FROM texts WHERE key = $1", key)
+
+
+# ── free prompts content ───────────────────────────────
+
+async def get_free_prompts() -> dict | None:
+    rows = await _p().fetch("SELECT key, value FROM texts WHERE key LIKE 'fp_%'")
+    data = {r["key"]: r["value"] for r in rows}
+    if "fp_type" not in data:
+        return None
+    return {
+        "type": data["fp_type"],
+        "file_id": data.get("fp_file_id", ""),
+        "caption": data.get("fp_caption", ""),
+    }
+
+
+async def set_free_prompts(content_type: str, file_id: str, caption: str) -> None:
+    for key, value in [("fp_type", content_type), ("fp_file_id", file_id), ("fp_caption", caption)]:
+        await upsert_text(key, value)
+
+
+async def clear_free_prompts() -> None:
+    await _p().execute("DELETE FROM texts WHERE key LIKE 'fp_%'")

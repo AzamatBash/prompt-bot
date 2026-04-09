@@ -12,7 +12,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from app.config import ADMIN_IDS, CHANNEL_ID, CHANNEL_INVITE
 from app.bot import bot
-from app.states import AdminBroadcast, AdminEditText
+from app.states import AdminBroadcast, AdminEditText, AdminEditFreePrompts
 from app import db
 from app.services import texts
 
@@ -71,6 +71,7 @@ def _main_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="💳 Платежи", callback_data="adm:pays:0")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm:bc")],
         [InlineKeyboardButton(text="✏️ Тексты", callback_data="adm:texts")],
+        [InlineKeyboardButton(text="🎁 Бесплатные промпты", callback_data="adm:fp")],
     ])
 
 
@@ -500,3 +501,133 @@ async def cb_text_reset(callback: CallbackQuery) -> None:
         [InlineKeyboardButton(text="🔙 К текстам", callback_data="adm:texts")],
     ]
     await callback.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=btns), parse_mode="HTML")
+
+
+# ── free prompts management ───────────────────────────
+
+_TYPE_LABELS = {"text": "📝 Текст", "photo": "🖼 Фото", "video": "🎬 Видео", "document": "📎 Файл"}
+
+
+@router.callback_query(IsAdmin(), lambda c: c.data == "adm:fp")
+async def cb_free_prompts_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    content = await db.get_free_prompts()
+
+    if content:
+        label = _TYPE_LABELS.get(content["type"], content["type"])
+        caption_preview = content["caption"][:150] if content["caption"] else "—"
+        preview = f"{label}\nПодпись: {caption_preview}"
+    else:
+        preview = "📁 Файл data/free_prompts.mp4 (по умолчанию)"
+
+    btns: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="✏️ Изменить", callback_data="adm:fp:edit")],
+    ]
+    if content:
+        btns.append([InlineKeyboardButton(text="👁 Предпросмотр", callback_data="adm:fp:preview")])
+        btns.append([InlineKeyboardButton(text="🗑 Сбросить", callback_data="adm:fp:reset")])
+    btns.append(_back())
+
+    await callback.message.edit_text(
+        f"🎁 Бесплатные промпты\n\n{preview}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=btns),
+    )
+    await callback.answer()
+
+
+@router.callback_query(IsAdmin(), lambda c: c.data == "adm:fp:edit")
+async def cb_fp_edit(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(AdminEditFreePrompts.waiting_for_content)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="adm:fp")],
+    ])
+    await callback.message.edit_text(
+        "🎁 Отправьте новый контент для бесплатных промптов:\n\n"
+        "• 🖼 Фото с подписью\n"
+        "• 🎬 Видео с подписью\n"
+        "• 📎 Документ с подписью\n"
+        "• 📝 Текстовое сообщение",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.message(AdminEditFreePrompts.waiting_for_content, Command("cancel"), IsAdmin())
+async def cancel_fp_edit(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Редактирование отменено.", reply_markup=_main_kb())
+
+
+@router.message(AdminEditFreePrompts.waiting_for_content, IsAdmin())
+async def process_fp_edit(message: Message, state: FSMContext) -> None:
+    await state.clear()
+
+    content_type = ""
+    file_id = ""
+    caption = ""
+
+    if message.photo:
+        content_type = "photo"
+        file_id = message.photo[-1].file_id
+        caption = message.caption or ""
+    elif message.video:
+        content_type = "video"
+        file_id = message.video.file_id
+        caption = message.caption or ""
+    elif message.document:
+        content_type = "document"
+        file_id = message.document.file_id
+        caption = message.caption or ""
+    elif message.text:
+        content_type = "text"
+        caption = message.text
+    else:
+        await message.answer("❌ Неподдерживаемый тип. Отправьте текст, фото, видео или документ.")
+        return
+
+    await db.set_free_prompts(content_type, file_id, caption)
+
+    label = _TYPE_LABELS.get(content_type, content_type)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К промптам", callback_data="adm:fp")],
+        _back(),
+    ])
+    await message.answer(f"✅ Бесплатные промпты обновлены ({label})", reply_markup=kb)
+
+
+@router.callback_query(IsAdmin(), lambda c: c.data == "adm:fp:preview")
+async def cb_fp_preview(callback: CallbackQuery) -> None:
+    content = await db.get_free_prompts()
+    if not content:
+        await callback.answer("Контент не задан", show_alert=True)
+        return
+
+    ctype = content["type"]
+    file_id = content["file_id"]
+    caption = content["caption"] or None
+
+    if ctype == "photo":
+        await callback.message.answer_photo(photo=file_id, caption=caption)
+    elif ctype == "video":
+        await callback.message.answer_video(video=file_id, caption=caption)
+    elif ctype == "document":
+        await callback.message.answer_document(document=file_id, caption=caption)
+    else:
+        await callback.message.answer(content["caption"] or "—")
+
+    await callback.answer()
+
+
+@router.callback_query(IsAdmin(), lambda c: c.data == "adm:fp:reset")
+async def cb_fp_reset(callback: CallbackQuery) -> None:
+    await db.clear_free_prompts()
+    await callback.answer("✅ Сброшено на файл по умолчанию", show_alert=True)
+
+    btns = [
+        [InlineKeyboardButton(text="✏️ Изменить", callback_data="adm:fp:edit")],
+        _back(),
+    ]
+    await callback.message.edit_text(
+        "🎁 Бесплатные промпты\n\n📁 Файл data/free_prompts.mp4 (по умолчанию)",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=btns),
+    )
