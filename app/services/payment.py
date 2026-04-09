@@ -59,7 +59,6 @@ async def create_payment(
     }
 
     payment = Payment.create(payment_data, uuid.uuid4())
-    await db.create_payment_record(chat_id, payment.id, amount, CURRENCY, days)
 
-    logger.info("Payment %s created for user %s (%s)", payment.id, chat_id, label)
+    logger.info("Payment link %s created for user %s (%s)", payment.id, chat_id, label)
     return payment.confirmation.confirmation_url

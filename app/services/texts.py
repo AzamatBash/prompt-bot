@@ -81,6 +81,16 @@ TEMPLATES: dict[str, dict] = {
         ),
         "hint": "",
     },
+    "payment_canceled": {
+        "label": "Платёж отменён",
+        "default": "❌ Оплата не прошла или была отменена.\nПопробуйте ещё раз — /pay",
+        "hint": "",
+    },
+    "payment_refunded": {
+        "label": "Возврат средств",
+        "default": "💸 Произведён возврат средств. Доступ к каналу отозван.",
+        "hint": "",
+    },
 }
 
 # key -> {"text": str, "media_type": str|None, "media_file_id": str|None}

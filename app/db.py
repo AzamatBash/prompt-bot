@@ -146,37 +146,44 @@ async def get_user_info(user_id: int) -> asyncpg.Record | None:
 
 # ── payments ───────────────────────────────────────────
 
-async def create_payment_record(
+async def create_succeeded_payment(
     user_id: int,
     yookassa_id: str,
     amount: str,
     currency: str,
     plan_days: int,
-) -> int:
+) -> dict | None:
+    """Create a payment record only when YooKassa confirms success.
+
+    Returns None if this yookassa_id was already recorded (idempotency).
+    """
     row = await _p().fetchrow(
         """
-        INSERT INTO payments (user_id, yookassa_id, amount, currency, plan_days, status)
-        VALUES ($1, $2, $3, $4, $5, 'pending')
-        RETURNING id
+        INSERT INTO payments (user_id, yookassa_id, amount, currency, plan_days, status, paid_at)
+        VALUES ($1, $2, $3, $4, $5, 'succeeded', now())
+        ON CONFLICT (yookassa_id) DO NOTHING
+        RETURNING id, user_id, plan_days
         """,
         user_id, yookassa_id, amount, currency, plan_days,
     )
-    return row["id"]
+    if row is None:
+        return None
+    return {"id": row["id"], "user_id": row["user_id"], "plan_days": row["plan_days"]}
 
 
-async def mark_payment_succeeded(yookassa_id: str) -> dict | None:
+async def mark_payment_refunded(yookassa_id: str) -> dict | None:
     row = await _p().fetchrow(
         """
         UPDATE payments
-        SET status = 'succeeded', paid_at = now()
-        WHERE yookassa_id = $1 AND status = 'pending'
-        RETURNING id, user_id, plan_days
+        SET status = 'refunded'
+        WHERE yookassa_id = $1 AND status = 'succeeded'
+        RETURNING id, user_id
         """,
         yookassa_id,
     )
     if row is None:
         return None
-    return {"id": row["id"], "user_id": row["user_id"], "plan_days": row["plan_days"]}
+    return {"id": row["id"], "user_id": row["user_id"]}
 
 
 async def get_payments_count() -> int:
