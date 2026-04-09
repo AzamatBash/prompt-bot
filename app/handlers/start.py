@@ -13,7 +13,7 @@ async def cmd_start(message: Message) -> None:
             callback_data="free_prompts",
         )],
         [types.InlineKeyboardButton(
-            text="💳 Оплатить доступ — 399₽",
+            text="💳 Оплатить доступ",
             callback_data="buy_access",
         )],
     ])

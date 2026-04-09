@@ -19,10 +19,15 @@ YOOKASSA_WEBHOOK_URL: str = PUBLIC_BASE_URL.rstrip("/") + YOOKASSA_WEBHOOK_PATH
 CHANNEL_ID: int = int(os.environ["CHANNEL_ID"])
 CHANNEL_INVITE: str = os.environ.get("CHANNEL_INVITE", "")
 
-PAYMENT_AMOUNT: str = os.environ.get("PAYMENT_AMOUNT", "399.00")
 CURRENCY: str = os.environ.get("CURRENCY", "RUB")
-SUBSCRIPTION_DAYS: int = int(os.environ.get("SUBSCRIPTION_DAYS", "30"))
 ITEM_NAME: str = "Доступ в сообщество"
+
+PLANS: dict[str, dict] = {
+    "1m":  {"days": 30,  "amount": os.environ.get("PRICE_1M",  "399.00"),  "label": "1 месяц"},
+    "3m":  {"days": 90,  "amount": os.environ.get("PRICE_3M",  "999.00"),  "label": "3 месяца"},
+    "6m":  {"days": 180, "amount": os.environ.get("PRICE_6M",  "1799.00"), "label": "6 месяцев"},
+    "12m": {"days": 365, "amount": os.environ.get("PRICE_12M", "2999.00"), "label": "12 месяцев"},
+}
 
 DATABASE_URL: str = os.environ["DATABASE_URL"]
 

@@ -32,6 +32,7 @@ async def init_db() -> None:
                 yookassa_id  TEXT UNIQUE NOT NULL,
                 amount       TEXT NOT NULL,
                 currency     TEXT NOT NULL DEFAULT 'RUB',
+                plan_days    INTEGER NOT NULL DEFAULT 30,
                 status       TEXT NOT NULL DEFAULT 'pending',
                 paid_at      TIMESTAMPTZ,
                 created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -51,6 +52,10 @@ async def init_db() -> None:
             )
         """)
         # safe migration for existing databases
+        await conn.execute("""
+            ALTER TABLE payments
+            ADD COLUMN IF NOT EXISTS plan_days INTEGER NOT NULL DEFAULT 30
+        """)
         for col in ("reminded_3d", "reminded_1d"):
             await conn.execute(f"""
                 ALTER TABLE subscriptions
@@ -133,14 +138,15 @@ async def create_payment_record(
     yookassa_id: str,
     amount: str,
     currency: str,
+    plan_days: int,
 ) -> int:
     row = await _p().fetchrow(
         """
-        INSERT INTO payments (user_id, yookassa_id, amount, currency, status)
-        VALUES ($1, $2, $3, $4, 'pending')
+        INSERT INTO payments (user_id, yookassa_id, amount, currency, plan_days, status)
+        VALUES ($1, $2, $3, $4, $5, 'pending')
         RETURNING id
         """,
-        user_id, yookassa_id, amount, currency,
+        user_id, yookassa_id, amount, currency, plan_days,
     )
     return row["id"]
 
@@ -151,13 +157,13 @@ async def mark_payment_succeeded(yookassa_id: str) -> dict | None:
         UPDATE payments
         SET status = 'succeeded', paid_at = now()
         WHERE yookassa_id = $1 AND status = 'pending'
-        RETURNING id, user_id
+        RETURNING id, user_id, plan_days
         """,
         yookassa_id,
     )
     if row is None:
         return None
-    return {"id": row["id"], "user_id": row["user_id"]}
+    return {"id": row["id"], "user_id": row["user_id"], "plan_days": row["plan_days"]}
 
 
 async def get_payments_count() -> int:

@@ -4,7 +4,7 @@ import logging
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from app.bot import bot
-from app.config import CHANNEL_ID, SUBSCRIPTION_DAYS
+from app.config import CHANNEL_ID
 from app import db
 
 logger = logging.getLogger(__name__)
@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 CHECK_INTERVAL_SECONDS = 3600
 
 
-async def activate_subscription(user_id: int, payment_db_id: int) -> None:
+async def activate_subscription(user_id: int, payment_db_id: int, days: int) -> None:
     """Save subscription to DB and unban user so they can join the channel."""
-    expires = await db.add_subscription(user_id, payment_db_id, SUBSCRIPTION_DAYS)
+    expires = await db.add_subscription(user_id, payment_db_id, days)
     logger.info("Subscription activated for user %s, expires %s", user_id, expires.isoformat())
 
     try:

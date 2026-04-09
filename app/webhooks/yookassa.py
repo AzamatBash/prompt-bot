@@ -26,8 +26,9 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
 
             user_id = payment_row["user_id"]
             payment_db_id = payment_row["id"]
+            plan_days = payment_row["plan_days"]
 
-            await activate_subscription(user_id=user_id, payment_db_id=payment_db_id)
+            await activate_subscription(user_id=user_id, payment_db_id=payment_db_id, days=plan_days)
 
             try:
                 await bot.send_message(
