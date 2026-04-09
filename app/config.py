@@ -19,6 +19,7 @@ YOOKASSA_WEBHOOK_URL: str = PUBLIC_BASE_URL.rstrip("/") + YOOKASSA_WEBHOOK_PATH
 CHANNEL_ID: int = int(os.environ["CHANNEL_ID"])
 CHANNEL_INVITE: str = os.environ.get("CHANNEL_INVITE", "")
 
+RECEIPT_EMAIL: str = os.environ.get("RECEIPT_EMAIL", "receipt@example.com")
 CURRENCY: str = os.environ.get("CURRENCY", "RUB")
 ITEM_NAME: str = "Доступ в сообщество"
 

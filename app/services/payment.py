@@ -6,6 +6,7 @@ from yookassa import Configuration, Payment
 from app.config import (
     YOOKASSA_SHOP_ID,
     YOOKASSA_SECRET_KEY,
+    RECEIPT_EMAIL,
     PLANS,
     CURRENCY,
     ITEM_NAME,
@@ -21,7 +22,6 @@ Configuration.secret_key = YOOKASSA_SECRET_KEY
 
 async def create_payment(
     chat_id: int,
-    email: str,
     username: str | None,
     plan_id: str,
 ) -> str:
@@ -31,7 +31,7 @@ async def create_payment(
     days = plan["days"]
     label = plan["label"]
 
-    await db.upsert_user(chat_id, username, email)
+    await db.upsert_user(chat_id, username, None)
 
     bot_info = await bot.get_me()
     description_suffix = f" (пользователь @{username})" if username else ""
@@ -46,7 +46,7 @@ async def create_payment(
         "description": f"{ITEM_NAME} — {label}",
         "metadata": {"chat_id": str(chat_id), "plan_days": str(days)},
         "receipt": {
-            "customer": {"email": email},
+            "customer": {"email": RECEIPT_EMAIL},
             "items": [
                 {
                     "description": f"{ITEM_NAME} ({label})" + description_suffix,
@@ -61,5 +61,5 @@ async def create_payment(
     payment = Payment.create(payment_data, uuid.uuid4())
     await db.create_payment_record(chat_id, payment.id, amount, CURRENCY, days)
 
-    logger.info("Payment %s created for user %s (%s, %s)", payment.id, chat_id, label, email)
+    logger.info("Payment %s created for user %s (%s)", payment.id, chat_id, label)
     return payment.confirmation.confirmation_url
