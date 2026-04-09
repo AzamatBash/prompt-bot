@@ -30,24 +30,13 @@ TEMPLATES: dict[str, dict] = {
     },
     "enter_email": {
         "label": "Запрос email",
-        "default": (
-            "Вы выбрали: {plan_label} — {plan_price}₽\n\n"
-            "Пожалуйста, введите ваш email для получения чека:"
-        ),
-        "hint": "{plan_label}, {plan_price}",
+        "default": "📧 Введите ваш email для получения чека:",
+        "hint": "",
     },
     "invalid_email": {
         "label": "Ошибка email",
-        "default": "Пожалуйста, введите корректный email.",
+        "default": "❌ Пожалуйста, введите корректный email.",
         "hint": "",
-    },
-    "payment_created": {
-        "label": "Платёж создан",
-        "default": (
-            "Платёж создан. Перейдите по ссылке для оплаты:\n{pay_url}\n\n"
-            "После оплаты бот пришлёт ссылку на канал."
-        ),
-        "hint": "{pay_url}",
     },
     "payment_error": {
         "label": "Ошибка платежа",

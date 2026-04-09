@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from aiohttp import web
+from aiogram import types as aiogram_types
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler
 
 from app.bot import bot, dp
@@ -25,6 +26,11 @@ _checker_task: asyncio.Task | None = None
 async def on_startup(app: web.Application) -> None:
     await db.init_db()
     await texts.load()
+
+    await bot.set_my_commands([
+        aiogram_types.BotCommand(command="start", description="🏠 Главное меню"),
+        aiogram_types.BotCommand(command="pay", description="💳 Оплатить подписку"),
+    ])
 
     logger.info("Setting Telegram webhook → %s", TELEGRAM_WEBHOOK_URL)
     await bot.set_webhook(TELEGRAM_WEBHOOK_URL)
