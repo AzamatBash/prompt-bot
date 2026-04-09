@@ -2,6 +2,8 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from app.services import texts
+
 router = Router()
 
 
@@ -17,4 +19,4 @@ async def cmd_start(message: Message) -> None:
             callback_data="buy_access",
         )],
     ])
-    await message.answer("👋 Привет! Выберите:", reply_markup=kb)
+    await message.answer(texts.get("start"), reply_markup=kb)

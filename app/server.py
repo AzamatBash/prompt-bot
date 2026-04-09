@@ -14,6 +14,7 @@ from app.config import (
 from app.handlers import root_router
 from app.webhooks.yookassa import yookassa_webhook_handler
 from app import db
+from app.services import texts
 from app.services.subscription import subscription_checker
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ _checker_task: asyncio.Task | None = None
 
 async def on_startup(app: web.Application) -> None:
     await db.init_db()
+    await texts.load()
 
     logger.info("Setting Telegram webhook → %s", TELEGRAM_WEBHOOK_URL)
     await bot.set_webhook(TELEGRAM_WEBHOOK_URL)

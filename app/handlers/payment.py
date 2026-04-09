@@ -4,9 +4,10 @@ from aiogram import Router, types
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
-from app.config import PLANS, CURRENCY
+from app.config import PLANS
 from app.states import Purchase
 from app.services.payment import create_payment
+from app.services import texts
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -22,7 +23,7 @@ async def buy_access_handler(callback: CallbackQuery) -> None:
         )])
 
     kb = types.InlineKeyboardMarkup(inline_keyboard=rows)
-    await callback.message.answer("Выберите период подписки:", reply_markup=kb)
+    await callback.message.answer(texts.get("choose_plan"), reply_markup=kb)
     await callback.answer()
 
 
@@ -38,8 +39,7 @@ async def plan_selected_handler(callback: CallbackQuery, state: FSMContext) -> N
     await state.set_state(Purchase.waiting_for_email)
 
     await callback.message.answer(
-        f"Вы выбрали: {plan['label']} — {plan['amount']}₽\n\n"
-        "Пожалуйста, введите ваш email для получения чека:"
+        texts.get("enter_email", plan_label=plan["label"], plan_price=plan["amount"]),
     )
     await callback.answer()
 
@@ -48,7 +48,7 @@ async def plan_selected_handler(callback: CallbackQuery, state: FSMContext) -> N
 async def process_email(message: Message, state: FSMContext) -> None:
     email = message.text.strip()
     if "@" not in email or "." not in email:
-        await message.answer("Пожалуйста, введите корректный email.")
+        await message.answer(texts.get("invalid_email"))
         return
 
     data = await state.get_data()
@@ -59,12 +59,9 @@ async def process_email(message: Message, state: FSMContext) -> None:
 
     try:
         pay_url = await create_payment(chat_id, email, username, plan_id)
-        await message.answer(
-            f"Платёж создан. Перейдите по ссылке для оплаты:\n{pay_url}\n\n"
-            "После оплаты бот пришлёт ссылку на канал."
-        )
+        await message.answer(texts.get("payment_created", pay_url=pay_url))
     except Exception:
         logger.exception("Error creating payment")
-        await message.answer("Ошибка при создании платежа. Попробуйте позже.")
+        await message.answer(texts.get("payment_error"))
     finally:
         await state.clear()

@@ -51,6 +51,12 @@ async def init_db() -> None:
                 created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS texts (
+                key    TEXT PRIMARY KEY,
+                value  TEXT NOT NULL
+            )
+        """)
         # safe migration for existing databases
         await conn.execute("""
             ALTER TABLE payments
@@ -327,3 +333,24 @@ async def get_expired_subscribers_count() -> int:
         )
         """,
     )
+
+
+# ── texts ──────────────────────────────────────────────
+
+async def get_all_texts() -> dict[str, str]:
+    rows = await _p().fetch("SELECT key, value FROM texts")
+    return {r["key"]: r["value"] for r in rows}
+
+
+async def upsert_text(key: str, value: str) -> None:
+    await _p().execute(
+        """
+        INSERT INTO texts (key, value) VALUES ($1, $2)
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """,
+        key, value,
+    )
+
+
+async def delete_text(key: str) -> None:
+    await _p().execute("DELETE FROM texts WHERE key = $1", key)

@@ -12,8 +12,9 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from app.config import ADMIN_IDS, CHANNEL_ID, CHANNEL_INVITE
 from app.bot import bot
-from app.states import AdminBroadcast
+from app.states import AdminBroadcast, AdminEditText
 from app import db
+from app.services import texts
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -69,6 +70,7 @@ def _main_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="👥 Пользователи", callback_data="adm:users:0")],
         [InlineKeyboardButton(text="💳 Платежи", callback_data="adm:pays:0")],
         [InlineKeyboardButton(text="📢 Рассылка", callback_data="adm:bc")],
+        [InlineKeyboardButton(text="✏️ Тексты", callback_data="adm:texts")],
     ])
 
 
@@ -367,3 +369,134 @@ async def process_broadcast(message: Message, state: FSMContext) -> None:
         f"✅ Рассылка завершена\n\nОтправлено: {sent}\nОшибок: {failed}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[_back()]),
     )
+
+
+# ── texts management ──────────────────────────────────
+
+@router.callback_query(IsAdmin(), lambda c: c.data == "adm:texts")
+async def cb_texts_list(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    rows: list[list[InlineKeyboardButton]] = []
+    for key, meta in texts.TEMPLATES.items():
+        current = texts.get(key)
+        is_custom = current != meta["default"]
+        icon = "🔵" if is_custom else "⚪"
+        rows.append([InlineKeyboardButton(
+            text=f"{icon} {meta['label']}",
+            callback_data=f"adm:txt:{key}",
+        )])
+    rows.append(_back())
+
+    await callback.message.edit_text(
+        "✏️ Тексты бота\n\n🔵 — изменён  ⚪ — по умолчанию",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+    await callback.answer()
+
+
+@router.callback_query(IsAdmin(), lambda c: c.data and c.data.startswith("adm:txt:"))
+async def cb_text_detail(callback: CallbackQuery) -> None:
+    key = callback.data.split(":", 2)[2]
+    meta = texts.TEMPLATES.get(key)
+    if not meta:
+        await callback.answer("Неизвестный ключ", show_alert=True)
+        return
+
+    current = texts.get(key)
+    is_default = current == meta["default"]
+
+    hint_line = f"\n\nПеременные: {meta['hint']}" if meta["hint"] else ""
+    status = "⚪ по умолчанию" if is_default else "🔵 изменён"
+
+    msg = (
+        f"✏️ {meta['label']} ({status})\n"
+        f"Ключ: <code>{key}</code>"
+        f"{hint_line}\n\n"
+        f"Текущий текст:\n<pre>{current}</pre>"
+    )
+
+    btns: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="✏️ Изменить", callback_data=f"adm:tedt:{key}")],
+    ]
+    if not is_default:
+        btns.append([InlineKeyboardButton(text="🔄 Сбросить", callback_data=f"adm:trst:{key}")])
+    btns.append([InlineKeyboardButton(text="🔙 К текстам", callback_data="adm:texts")])
+
+    await callback.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=btns), parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(IsAdmin(), lambda c: c.data and c.data.startswith("adm:tedt:"))
+async def cb_text_edit(callback: CallbackQuery, state: FSMContext) -> None:
+    key = callback.data.split(":", 2)[2]
+    meta = texts.TEMPLATES.get(key)
+    if not meta:
+        await callback.answer("Неизвестный ключ", show_alert=True)
+        return
+
+    await state.set_state(AdminEditText.waiting_for_text)
+    await state.update_data(text_key=key)
+
+    hint_line = f"\n\nДоступные переменные: {meta['hint']}" if meta["hint"] else ""
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"adm:txt:{key}")],
+    ])
+    await callback.message.edit_text(
+        f"✏️ Редактирование: {meta['label']}{hint_line}\n\nОтправьте новый текст:",
+        reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.message(AdminEditText.waiting_for_text, Command("cancel"), IsAdmin())
+async def cancel_text_edit(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Редактирование отменено.", reply_markup=_main_kb())
+
+
+@router.message(AdminEditText.waiting_for_text, IsAdmin())
+async def process_text_edit(message: Message, state: FSMContext) -> None:
+    if not message.text:
+        await message.answer("Отправьте текстовое сообщение.")
+        return
+
+    data = await state.get_data()
+    key = data.get("text_key")
+    await state.clear()
+
+    if key not in texts.TEMPLATES:
+        await message.answer("Ошибка: неизвестный ключ.", reply_markup=_main_kb())
+        return
+
+    await texts.set_text(key, message.text)
+    meta = texts.TEMPLATES[key]
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К текстам", callback_data="adm:texts")],
+        _back(),
+    ])
+    await message.answer(f"✅ Текст «{meta['label']}» сохранён.", reply_markup=kb)
+
+
+@router.callback_query(IsAdmin(), lambda c: c.data and c.data.startswith("adm:trst:"))
+async def cb_text_reset(callback: CallbackQuery) -> None:
+    key = callback.data.split(":", 2)[2]
+    meta = texts.TEMPLATES.get(key)
+    if not meta:
+        await callback.answer("Неизвестный ключ", show_alert=True)
+        return
+
+    await texts.reset_text(key)
+    await callback.answer(f"✅ «{meta['label']}» сброшен", show_alert=True)
+
+    current = texts.get(key)
+    msg = (
+        f"✏️ {meta['label']} (⚪ по умолчанию)\n"
+        f"Ключ: <code>{key}</code>\n\n"
+        f"Текущий текст:\n<pre>{current}</pre>"
+    )
+    btns: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="✏️ Изменить", callback_data=f"adm:tedt:{key}")],
+        [InlineKeyboardButton(text="🔙 К текстам", callback_data="adm:texts")],
+    ]
+    await callback.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=btns), parse_mode="HTML")

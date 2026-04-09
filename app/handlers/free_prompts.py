@@ -1,9 +1,8 @@
-import os
-
 from aiogram import Router, types
 from aiogram.types import CallbackQuery
 
 from app.config import DATA_DIR
+from app.services import texts
 
 router = Router()
 
@@ -14,7 +13,10 @@ async def free_prompts_handler(callback: CallbackQuery) -> None:
     if file_path.exists():
         with open(file_path, "rb") as f:
             video = types.BufferedInputFile(f.read(), filename="free_prompts.mp4")
-            await callback.message.answer_video(video=video, caption="🎁 Бесплатные промпты")
+            await callback.message.answer_video(
+                video=video,
+                caption=texts.get("free_prompts"),
+            )
     else:
         await callback.message.answer("Файл не найден. Обратитесь к администратору.")
     await callback.answer()

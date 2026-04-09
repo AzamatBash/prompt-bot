@@ -6,6 +6,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from app.bot import bot
 from app.config import CHANNEL_ID
 from app import db
+from app.services import texts
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +38,7 @@ async def revoke_subscription(user_id: int) -> None:
 
 async def _notify_and_kick(user_id: int, chat_id: int) -> None:
     try:
-        await bot.send_message(
-            chat_id,
-            "⏰ Ваша подписка истекла. Для продления используйте /start",
-        )
+        await bot.send_message(chat_id, texts.get("sub_expired"))
     except Exception:
         logger.debug("Could not notify user %s about expiry", user_id)
 
@@ -52,11 +50,7 @@ async def _send_reminders() -> None:
     users_3d = await db.get_subscriptions_for_reminder_3d()
     for uid in users_3d:
         try:
-            await bot.send_message(
-                uid,
-                "⚠️ Ваша подписка истекает через 3 дня.\n"
-                "Чтобы продлить доступ, используйте /start",
-            )
+            await bot.send_message(uid, texts.get("reminder_3d"))
         except Exception:
             logger.debug("Could not send 3-day reminder to user %s", uid)
         await asyncio.sleep(0.04)
@@ -67,11 +61,7 @@ async def _send_reminders() -> None:
     users_1d = await db.get_subscriptions_for_reminder_1d()
     for uid in users_1d:
         try:
-            await bot.send_message(
-                uid,
-                "🔔 Ваша подписка истекает завтра!\n"
-                "Продлите доступ прямо сейчас — /start",
-            )
+            await bot.send_message(uid, texts.get("reminder_1d"))
         except Exception:
             logger.debug("Could not send 1-day reminder to user %s", uid)
         await asyncio.sleep(0.04)

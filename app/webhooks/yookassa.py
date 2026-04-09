@@ -6,6 +6,7 @@ from app.bot import bot
 from app.config import CHANNEL_INVITE
 from app import db
 from app.services.subscription import activate_subscription
+from app.services import texts
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,7 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
             try:
                 await bot.send_message(
                     user_id,
-                    f"✅ Оплата прошла успешно!\n\n"
-                    f"Добро пожаловать в сообщество 🎉\n"
-                    f"Вот ваша ссылка для входа:\n{CHANNEL_INVITE}\n\n"
-                    f"Если возникнут вопросы — напишите.",
+                    texts.get("payment_success", invite_link=CHANNEL_INVITE),
                 )
                 logger.info("Invite sent to user %s (payment %s)", user_id, yookassa_id)
             except Exception:
