@@ -1,37 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Configuration ──────────────────────────────────────
 DOMAIN="${1:?Usage: ./init-ssl.sh <domain> [email]}"
 EMAIL="${2:-}"
 COMPOSE="docker compose"
 
 echo "==> Domain: $DOMAIN"
-echo "==> Email:  ${EMAIL:-<not set, will use --register-unsafely-without-email>}"
 
-# ── 1. Create dummy certificate so nginx can start ─────
-echo "==> Creating dummy certificate for $DOMAIN..."
-$COMPOSE run --rm --entrypoint "" certbot sh -c "
-    mkdir -p /etc/letsencrypt/live/$DOMAIN &&
-    openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-        -keyout /etc/letsencrypt/live/$DOMAIN/privkey.pem \
-        -out    /etc/letsencrypt/live/$DOMAIN/fullchain.pem \
-        -subj   '/CN=localhost'
-"
+# ── 1. Start services with HTTP-only config ────────────
+echo "==> Starting services..."
+$COMPOSE up -d
 
-# ── 2. Start nginx with dummy cert ────────────────────
-echo "==> Starting nginx..."
-$COMPOSE up -d nginx
+echo "==> Waiting for nginx to be ready..."
+sleep 3
 
-# ── 3. Remove dummy certificate ───────────────────────
-echo "==> Removing dummy certificate..."
-$COMPOSE run --rm --entrypoint "" certbot sh -c "
-    rm -rf /etc/letsencrypt/live/$DOMAIN &&
-    rm -rf /etc/letsencrypt/archive/$DOMAIN &&
-    rm -rf /etc/letsencrypt/renewal/$DOMAIN.conf
-"
-
-# ── 4. Request real certificate from Let's Encrypt ────
+# ── 2. Request certificate from Let's Encrypt ─────────
 echo "==> Requesting certificate from Let's Encrypt..."
 EMAIL_ARG=""
 if [ -n "$EMAIL" ]; then
@@ -45,13 +28,86 @@ $COMPOSE run --rm certbot certonly \
     -d "$DOMAIN" \
     $EMAIL_ARG \
     --agree-tos \
-    --no-eff-email \
-    --force-renewal
+    --no-eff-email
 
-# ── 5. Reload nginx with real certificate ─────────────
-echo "==> Reloading nginx..."
-$COMPOSE exec nginx nginx -s reload
+# ── 3. Generate HTTPS nginx config ────────────────────
+echo "==> Switching nginx to HTTPS..."
+cat > nginx/nginx.conf <<NGINXEOF
+worker_processes auto;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    sendfile        on;
+    keepalive_timeout 65;
+
+    log_format main '\$remote_addr - [\$time_local] "\$request" \$status \$body_bytes_sent';
+    access_log /var/log/nginx/access.log main;
+    error_log  /var/log/nginx/error.log warn;
+
+    upstream bot_upstream {
+        server bot:8000;
+    }
+
+    server {
+        listen 80;
+        server_name ${DOMAIN};
+
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+        }
+
+        location / {
+            return 301 https://\$host\$request_uri;
+        }
+    }
+
+    server {
+        listen 443 ssl;
+        server_name ${DOMAIN};
+
+        ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_prefer_server_ciphers on;
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 10m;
+
+        client_max_body_size 10m;
+
+        location /telegram/webhook {
+            proxy_pass         http://bot_upstream;
+            proxy_set_header   Host \$host;
+            proxy_set_header   X-Real-IP \$remote_addr;
+            proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header   X-Forwarded-Proto \$scheme;
+            proxy_read_timeout 60s;
+        }
+
+        location /yookassa/webhook {
+            proxy_pass         http://bot_upstream;
+            proxy_set_header   Host \$host;
+            proxy_set_header   X-Real-IP \$remote_addr;
+            proxy_set_header   X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header   X-Forwarded-Proto \$scheme;
+            proxy_read_timeout 60s;
+        }
+
+        location / {
+            return 444;
+        }
+    }
+}
+NGINXEOF
+
+# ── 4. Reload nginx with HTTPS config ─────────────────
+$COMPOSE restart nginx
 
 echo ""
-echo "==> Done! SSL certificate installed for $DOMAIN"
-echo "==> Now start all services: docker compose up -d"
+echo "==> Done! HTTPS is active for $DOMAIN"
+echo "==> Don't forget to set PUBLIC_BASE_URL=https://$DOMAIN in .env and restart bot:"
+echo "    docker compose restart bot"
