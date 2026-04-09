@@ -2,7 +2,6 @@ import logging
 
 from aiohttp import web
 
-from app.bot import bot
 from app.config import CHANNEL_INVITE
 from app import db
 from app.services.subscription import activate_subscription
@@ -32,10 +31,7 @@ async def yookassa_webhook_handler(request: web.Request) -> web.Response:
             await activate_subscription(user_id=user_id, payment_db_id=payment_db_id, days=plan_days)
 
             try:
-                await bot.send_message(
-                    user_id,
-                    texts.get("payment_success", invite_link=CHANNEL_INVITE),
-                )
+                await texts.send(user_id, "payment_success", invite_link=CHANNEL_INVITE)
                 logger.info("Invite sent to user %s (payment %s)", user_id, yookassa_id)
             except Exception:
                 logger.exception("Failed to send invite to user %s", user_id)

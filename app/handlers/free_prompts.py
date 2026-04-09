@@ -1,7 +1,6 @@
 from aiogram import Router, types
 from aiogram.types import CallbackQuery
 
-from app.bot import bot
 from app.config import DATA_DIR
 from app.services import texts
 from app import db

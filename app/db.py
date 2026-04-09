@@ -53,8 +53,10 @@ async def init_db() -> None:
         """)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS texts (
-                key    TEXT PRIMARY KEY,
-                value  TEXT NOT NULL
+                key           TEXT PRIMARY KEY,
+                value         TEXT NOT NULL,
+                media_type    TEXT,
+                media_file_id TEXT
             )
         """)
         # safe migration for existing databases
@@ -66,6 +68,11 @@ async def init_db() -> None:
             await conn.execute(f"""
                 ALTER TABLE subscriptions
                 ADD COLUMN IF NOT EXISTS {col} BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+        for col in ("media_type", "media_file_id"):
+            await conn.execute(f"""
+                ALTER TABLE texts
+                ADD COLUMN IF NOT EXISTS {col} TEXT
             """)
 
     logger.info("Database tables ready")
@@ -337,18 +344,48 @@ async def get_expired_subscribers_count() -> int:
 
 # ── texts ──────────────────────────────────────────────
 
-async def get_all_texts() -> dict[str, str]:
-    rows = await _p().fetch("SELECT key, value FROM texts")
-    return {r["key"]: r["value"] for r in rows}
+async def get_all_texts() -> dict[str, dict]:
+    rows = await _p().fetch("SELECT key, value, media_type, media_file_id FROM texts")
+    return {
+        r["key"]: {
+            "value": r["value"],
+            "media_type": r["media_type"],
+            "media_file_id": r["media_file_id"],
+        }
+        for r in rows
+    }
 
 
 async def upsert_text(key: str, value: str) -> None:
+    """Update text only, preserving media."""
     await _p().execute(
         """
         INSERT INTO texts (key, value) VALUES ($1, $2)
         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
         """,
         key, value,
+    )
+
+
+async def upsert_text_with_media(
+    key: str, value: str, media_type: str, media_file_id: str,
+) -> None:
+    await _p().execute(
+        """
+        INSERT INTO texts (key, value, media_type, media_file_id) VALUES ($1, $2, $3, $4)
+        ON CONFLICT (key) DO UPDATE SET
+            value = EXCLUDED.value,
+            media_type = EXCLUDED.media_type,
+            media_file_id = EXCLUDED.media_file_id
+        """,
+        key, value, media_type, media_file_id,
+    )
+
+
+async def clear_text_media(key: str) -> None:
+    await _p().execute(
+        "UPDATE texts SET media_type = NULL, media_file_id = NULL WHERE key = $1",
+        key,
     )
 
 

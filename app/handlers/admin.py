@@ -379,10 +379,12 @@ async def cb_texts_list(callback: CallbackQuery, state: FSMContext) -> None:
     rows: list[list[InlineKeyboardButton]] = []
     for key, meta in texts.TEMPLATES.items():
         current = texts.get(key)
-        is_custom = current != meta["default"]
+        has_media = texts.get_media(key) is not None
+        is_custom = current != meta["default"] or has_media
         icon = "🔵" if is_custom else "⚪"
+        media_icon = " 📎" if has_media else ""
         rows.append([InlineKeyboardButton(
-            text=f"{icon} {meta['label']}",
+            text=f"{icon} {meta['label']}{media_icon}",
             callback_data=f"adm:txt:{key}",
         )])
     rows.append(_back())
@@ -403,23 +405,26 @@ async def cb_text_detail(callback: CallbackQuery) -> None:
         return
 
     current = texts.get(key)
-    is_default = current == meta["default"]
+    is_default = current == meta["default"] and texts.get_media(key) is None
 
     hint_line = f"\n\nПеременные: {meta['hint']}" if meta["hint"] else ""
     status = "⚪ по умолчанию" if is_default else "🔵 изменён"
+    media_line = f"\n📎 Медиа: {texts.media_label(key)}" if texts.get_media(key) else ""
 
     msg = (
         f"✏️ {meta['label']} ({status})\n"
         f"Ключ: <code>{key}</code>"
-        f"{hint_line}\n\n"
+        f"{hint_line}{media_line}\n\n"
         f"Текущий текст:\n<pre>{current}</pre>"
     )
 
     btns: list[list[InlineKeyboardButton]] = [
         [InlineKeyboardButton(text="✏️ Изменить", callback_data=f"adm:tedt:{key}")],
     ]
+    if texts.get_media(key):
+        btns.append([InlineKeyboardButton(text="🗑 Убрать медиа", callback_data=f"adm:tclr:{key}")])
     if not is_default:
-        btns.append([InlineKeyboardButton(text="🔄 Сбросить", callback_data=f"adm:trst:{key}")])
+        btns.append([InlineKeyboardButton(text="🔄 Сбросить всё", callback_data=f"adm:trst:{key}")])
     btns.append([InlineKeyboardButton(text="🔙 К текстам", callback_data="adm:texts")])
 
     await callback.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=btns), parse_mode="HTML")
@@ -442,7 +447,10 @@ async def cb_text_edit(callback: CallbackQuery, state: FSMContext) -> None:
         [InlineKeyboardButton(text="❌ Отмена", callback_data=f"adm:txt:{key}")],
     ])
     await callback.message.edit_text(
-        f"✏️ Редактирование: {meta['label']}{hint_line}\n\nОтправьте новый текст:",
+        f"✏️ Редактирование: {meta['label']}{hint_line}\n\n"
+        "Отправьте:\n"
+        "• 📝 Текст — обновит только текст\n"
+        "• 🖼 Фото / 🎬 Видео / 📎 Файл с подписью — обновит текст и медиа",
         reply_markup=kb,
     )
     await callback.answer()
@@ -456,26 +464,70 @@ async def cancel_text_edit(message: Message, state: FSMContext) -> None:
 
 @router.message(AdminEditText.waiting_for_text, IsAdmin())
 async def process_text_edit(message: Message, state: FSMContext) -> None:
-    if not message.text:
-        await message.answer("Отправьте текстовое сообщение.")
-        return
-
     data = await state.get_data()
     key = data.get("text_key")
-    await state.clear()
 
     if key not in texts.TEMPLATES:
+        await state.clear()
         await message.answer("Ошибка: неизвестный ключ.", reply_markup=_main_kb())
         return
 
-    await texts.set_text(key, message.text)
     meta = texts.TEMPLATES[key]
+    saved_label = ""
 
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        caption = message.caption or texts.get(key)
+        await texts.set_text_with_media(key, caption, "photo", file_id)
+        saved_label = "текст + 🖼 фото"
+    elif message.video:
+        file_id = message.video.file_id
+        caption = message.caption or texts.get(key)
+        await texts.set_text_with_media(key, caption, "video", file_id)
+        saved_label = "текст + 🎬 видео"
+    elif message.document:
+        file_id = message.document.file_id
+        caption = message.caption or texts.get(key)
+        await texts.set_text_with_media(key, caption, "document", file_id)
+        saved_label = "текст + 📎 файл"
+    elif message.text:
+        await texts.set_text(key, message.text)
+        saved_label = "📝 текст"
+    else:
+        await message.answer("❌ Отправьте текст, фото, видео или документ.")
+        return
+
+    await state.clear()
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 К текстам", callback_data="adm:texts")],
         _back(),
     ])
-    await message.answer(f"✅ Текст «{meta['label']}» сохранён.", reply_markup=kb)
+    await message.answer(f"✅ «{meta['label']}» сохранён ({saved_label})", reply_markup=kb)
+
+
+@router.callback_query(IsAdmin(), lambda c: c.data and c.data.startswith("adm:tclr:"))
+async def cb_text_clear_media(callback: CallbackQuery) -> None:
+    key = callback.data.split(":", 2)[2]
+    meta = texts.TEMPLATES.get(key)
+    if not meta:
+        await callback.answer("Неизвестный ключ", show_alert=True)
+        return
+
+    await texts.clear_media(key)
+    await callback.answer("✅ Медиа удалено", show_alert=True)
+
+    current = texts.get(key)
+    msg = (
+        f"✏️ {meta['label']} (🔵 изменён)\n"
+        f"Ключ: <code>{key}</code>\n\n"
+        f"Текущий текст:\n<pre>{current}</pre>"
+    )
+    btns: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="✏️ Изменить", callback_data=f"adm:tedt:{key}")],
+        [InlineKeyboardButton(text="🔄 Сбросить всё", callback_data=f"adm:trst:{key}")],
+        [InlineKeyboardButton(text="🔙 К текстам", callback_data="adm:texts")],
+    ]
+    await callback.message.edit_text(msg, reply_markup=InlineKeyboardMarkup(inline_keyboard=btns), parse_mode="HTML")
 
 
 @router.callback_query(IsAdmin(), lambda c: c.data and c.data.startswith("adm:trst:"))

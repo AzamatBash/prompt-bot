@@ -33,13 +33,17 @@ async def back_to_start(callback: CallbackQuery, state: FSMContext) -> None:
         [types.InlineKeyboardButton(text="🎁 Получить бесплатные промпты", callback_data="free_prompts")],
         [types.InlineKeyboardButton(text="💳 Оплатить доступ", callback_data="buy_access")],
     ])
-    await callback.message.edit_text(texts.get("start"), reply_markup=kb)
+    if texts.get_media("start"):
+        await callback.message.delete()
+        await texts.send(callback.from_user.id, "start", reply_markup=kb)
+    else:
+        await callback.message.edit_text(texts.get("start"), reply_markup=kb)
     await callback.answer()
 
 
 @router.callback_query(lambda c: c.data == "buy_access")
 async def buy_access_handler(callback: CallbackQuery) -> None:
-    await callback.message.answer(texts.get("choose_plan"), reply_markup=_plans_keyboard())
+    await texts.send(callback.message, "choose_plan", reply_markup=_plans_keyboard())
     await callback.answer()
 
 
