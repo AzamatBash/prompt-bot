@@ -162,6 +162,8 @@ async def send(target: Message | int, key: str, reply_markup=None, **kwargs):
     text = get(key, **kwargs)
     media = get_media(key)
 
+    pm = "HTML"
+
     if isinstance(target, int):
         if media:
             sender = {
@@ -171,8 +173,8 @@ async def send(target: Message | int, key: str, reply_markup=None, **kwargs):
             }.get(media["type"])
             if sender:
                 kw_name = media["type"]
-                return await sender(target, **{kw_name: media["file_id"]}, caption=text, reply_markup=reply_markup)
-        return await bot.send_message(target, text, reply_markup=reply_markup)
+                return await sender(target, **{kw_name: media["file_id"]}, caption=text, reply_markup=reply_markup, parse_mode=pm)
+        return await bot.send_message(target, text, reply_markup=reply_markup, parse_mode=pm)
     else:
         if media:
             method = {
@@ -182,8 +184,8 @@ async def send(target: Message | int, key: str, reply_markup=None, **kwargs):
             }.get(media["type"])
             if method:
                 kw_name = media["type"]
-                return await method(**{kw_name: media["file_id"]}, caption=text, reply_markup=reply_markup)
-        return await target.answer(text, reply_markup=reply_markup)
+                return await method(**{kw_name: media["file_id"]}, caption=text, reply_markup=reply_markup, parse_mode=pm)
+        return await target.answer(text, reply_markup=reply_markup, parse_mode=pm)
 
 
 async def set_text(key: str, value: str) -> None:

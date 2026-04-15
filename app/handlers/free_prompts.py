@@ -18,13 +18,13 @@ async def free_prompts_handler(callback: CallbackQuery) -> None:
         file_id = content["file_id"]
 
         if ctype == "photo":
-            await callback.message.answer_photo(photo=file_id, caption=caption)
+            await callback.message.answer_photo(photo=file_id, caption=caption, parse_mode="HTML")
         elif ctype == "video":
-            await callback.message.answer_video(video=file_id, caption=caption)
+            await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
         elif ctype == "document":
-            await callback.message.answer_document(document=file_id, caption=caption)
+            await callback.message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
         else:
-            await callback.message.answer(content["caption"] or texts.get("free_prompts"))
+            await callback.message.answer(content["caption"] or texts.get("free_prompts"), parse_mode="HTML")
     else:
         file_path = DATA_DIR / "free_prompts.mp4"
         if file_path.exists():
@@ -33,6 +33,7 @@ async def free_prompts_handler(callback: CallbackQuery) -> None:
                 await callback.message.answer_video(
                     video=video,
                     caption=texts.get("free_prompts"),
+                    parse_mode="HTML",
                 )
         else:
             await callback.message.answer("📂 Контент пока не добавлен. Обратитесь к администратору.")

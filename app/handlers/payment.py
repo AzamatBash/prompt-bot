@@ -37,7 +37,7 @@ async def back_to_start(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.delete()
         await texts.send(callback.from_user.id, "start", reply_markup=kb)
     else:
-        await callback.message.edit_text(texts.get("start"), reply_markup=kb)
+        await callback.message.edit_text(texts.get("start"), reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -69,9 +69,10 @@ async def plan_selected_handler(callback: CallbackQuery) -> None:
             f"{icon} {plan['label']} — {plan['amount']}₽\n\n"
             "👇 Нажмите кнопку для перехода к оплате:",
             reply_markup=kb,
+            parse_mode="HTML",
         )
     except Exception:
         logger.exception("Error creating payment")
-        await callback.message.edit_text(texts.get("payment_error"))
+        await callback.message.edit_text(texts.get("payment_error"), parse_mode="HTML")
 
     await callback.answer()

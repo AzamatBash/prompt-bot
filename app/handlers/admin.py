@@ -56,6 +56,15 @@ def _user_label(rec) -> str:
     return f"@{rec['username']}" if rec["username"] else str(rec["user_id"])
 
 
+def _extract_rich_text(message: Message, *, use_caption: bool = False) -> str:
+    """Keep Telegram formatting and allow explicit HTML input."""
+    raw = message.caption if use_caption else message.text
+    html = message.html_caption if use_caption else message.html_text
+    if raw and ("<" in raw and ">" in raw):
+        return raw
+    return html or raw or ""
+
+
 # ── noop (page counter button) ─────────────────────────
 
 @router.callback_query(lambda c: c.data == "noop")
@@ -477,21 +486,21 @@ async def process_text_edit(message: Message, state: FSMContext) -> None:
 
     if message.photo:
         file_id = message.photo[-1].file_id
-        caption = message.caption or texts.get(key)
+        caption = _extract_rich_text(message, use_caption=True) or texts.get(key)
         await texts.set_text_with_media(key, caption, "photo", file_id)
         saved_label = "текст + 🖼 фото"
     elif message.video:
         file_id = message.video.file_id
-        caption = message.caption or texts.get(key)
+        caption = _extract_rich_text(message, use_caption=True) or texts.get(key)
         await texts.set_text_with_media(key, caption, "video", file_id)
         saved_label = "текст + 🎬 видео"
     elif message.document:
         file_id = message.document.file_id
-        caption = message.caption or texts.get(key)
+        caption = _extract_rich_text(message, use_caption=True) or texts.get(key)
         await texts.set_text_with_media(key, caption, "document", file_id)
         saved_label = "текст + 📎 файл"
     elif message.text:
-        await texts.set_text(key, message.text)
+        await texts.set_text(key, _extract_rich_text(message))
         saved_label = "📝 текст"
     else:
         await message.answer("❌ Отправьте текст, фото, видео или документ.")
@@ -620,18 +629,18 @@ async def process_fp_edit(message: Message, state: FSMContext) -> None:
     if message.photo:
         content_type = "photo"
         file_id = message.photo[-1].file_id
-        caption = message.caption or ""
+        caption = _extract_rich_text(message, use_caption=True)
     elif message.video:
         content_type = "video"
         file_id = message.video.file_id
-        caption = message.caption or ""
+        caption = _extract_rich_text(message, use_caption=True)
     elif message.document:
         content_type = "document"
         file_id = message.document.file_id
-        caption = message.caption or ""
+        caption = _extract_rich_text(message, use_caption=True)
     elif message.text:
         content_type = "text"
-        caption = message.text
+        caption = _extract_rich_text(message)
     else:
         await message.answer("❌ Неподдерживаемый тип. Отправьте текст, фото, видео или документ.")
         return
@@ -658,13 +667,13 @@ async def cb_fp_preview(callback: CallbackQuery) -> None:
     caption = content["caption"] or None
 
     if ctype == "photo":
-        await callback.message.answer_photo(photo=file_id, caption=caption)
+        await callback.message.answer_photo(photo=file_id, caption=caption, parse_mode="HTML")
     elif ctype == "video":
-        await callback.message.answer_video(video=file_id, caption=caption)
+        await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
     elif ctype == "document":
-        await callback.message.answer_document(document=file_id, caption=caption)
+        await callback.message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
     else:
-        await callback.message.answer(content["caption"] or "—")
+        await callback.message.answer(content["caption"] or "—", parse_mode="HTML")
 
     await callback.answer()
 
